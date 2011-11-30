@@ -27,7 +27,7 @@ var returnTemplate = 'Returns:\n\n* <code><span class="type">{type}</span></code
 var returnUnknownTemplate = 'Returns:\n\n* {doc}';
 var methodTemplate = '### {name}({parameters})';
 var staticMethodTemplate = '### {class}.{name}({parameters})  <span class="static">static</span>';
-var classTemplate = '## <span class="class">{name}</span>';
+var classTemplate = '## <span class="class">{name}({parameters})</span>';
 
 var htmlTemplate = fs.readFileSync(__dirname+'/template.html').toString();
 
@@ -137,6 +137,7 @@ function generateDoc(data) {
 		if (entry.type == Types.CLASS) {
 			out+=template(classTemplate, {
 				name: entry.name,
+				parameters: parameters
 			});
 
 		} else if (entry.type==Types.METHOD) {
