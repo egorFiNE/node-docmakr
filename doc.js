@@ -21,11 +21,12 @@ if (argv._.length<=0) {
 } 
 
 
+var tocEntryTemplate = '* <a href="#{anchor}">{title}</a>';
 var paramTemplate = '* <code><span class="type">{type}</span></code> <code>**{name}**</code> &#8212; {doc}';
 var paramUnknownTemplate = '* <code>**{name}**</code> &#8212; {doc}';
 var returnTemplate = 'Returns:\n\n* <code><span class="type">{type}</span></code> {doc}';
 var returnUnknownTemplate = 'Returns:\n\n* {doc}';
-var methodTemplate = '### {name}({parameters})';
+var methodTemplate = '### <a name="{anchor}"></a> {name}({parameters})';
 var staticMethodTemplate = '### {class}.{name}({parameters})  <span class="static">static</span>';
 var classTemplate = '## <span class="class">{name}({parameters})</span>';
 
@@ -42,14 +43,15 @@ var filename = argv._[0];
 var data = fs.readFileSync(filename).toString();
 
 var filenameMd = filename.replace('.js', '.md');
-var md = generateDoc(data);
+var md = generateDoc(filename, data);
 if (argv.md) {
 	fs.writeFileSync(argv.out+'/'+filenameMd, md);
 }
 
 var filenameHtml = filename.replace('.js', '.html');
 var html = markdown.toHTML(markdown.parse(md), {xhtml:false});
-html = html.replace(/<hr><\/hr>/g, "<hr />");
+html = html
+	.replace(/<hr><\/hr>/g, "<hr />");
 
 html = template(htmlTemplate, {
 	title: filename,
@@ -58,8 +60,24 @@ html = template(htmlTemplate, {
 
 fs.writeFileSync(argv.out+'/'+filenameHtml, html);
 
+function generateAnchor(type, name, parameters) {
+	name = name || '';
+	parameters = parameters || '';
+	parameters = parameters.replace(/\s+/g, 'Q');
+	parameters = parameters.replace(/,/g, 'Q');
+	parameters = parameters.replace(/,/g, 'Q');
+	parameters = parameters.toLowerCase();
+	name = name.toLowerCase();
+	var anchor =  type+'Q'+name+'Q'+parameters;
+	anchor = anchor.replace(/_/g, 'Q');
+	return stripHtml(anchor);
+}
 
-function generateDoc(data) {
+function stripHtml(str) { 
+	return str.replace(/<[^>+]>/g, '');
+}
+
+function generateDoc(filename, data) {
 	var lines = data.split("\n");
 
 	var _inComment = false, currentComment = [], currentMatch=null;
@@ -86,12 +104,15 @@ function generateDoc(data) {
 
 			var firstLetter = name.substr(0,1);
 			if (firstLetter.match(/[A-Z]/)) {
+				var parameters = currentMatch[2].trim();
+				var anchor = generateAnchor(Types.CLASS, name, parameters);
 				documentation.push({
 					declaration: line,
 					name: name,
-					parameters: currentMatch[2].trim(),
+					parameters: parameters,
 					type: Types.CLASS,
-					comment: currentComment
+					comment: currentComment,
+					anchor: anchor
 				});
 				
 				lastClassName=name;
@@ -100,64 +121,96 @@ function generateDoc(data) {
 			currentComment = [];
 			
 		} else if ((currentMatch=line.match(/^\s*[^\.]+\.prototype\.([^\.]+)\s*=\s*function\s*\((.*)\)/))) {
+			var parameters = currentMatch[2].trim();
+			var name = currentMatch[1].trim();
+			var anchor = generateAnchor(Types.METHOD, name, parameters);
 			documentation.push({
 				declaration: line,
-				parameters: currentMatch[2].trim(),
-				name: currentMatch[1].trim(),
+				parameters: parameters,
+				name: name,
 				type: Types.METHOD,
-				comment: currentComment
+				comment: currentComment,
+				anchor: anchor
 			});
 			
 			currentComment = [];
 			
 		} else if ((currentMatch=line.match(/^\s*[^\.]+\.([^\.]+)\s*=\s*function\s*\((.*)\)/))) {
+			var parameters = currentMatch[2].trim();
+			var name = currentMatch[1].trim();
+			var anchor = generateAnchor(Types.STATIC_METHOD, name, parameters);
 			documentation.push({
 				declaration: line,
-				parameters: currentMatch[2].trim(),
-				name: currentMatch[1].trim(),
+				parameters: parameters,
+				name: name,
 				type: Types.STATIC_METHOD,
-				comment: currentComment
+				comment: currentComment,
+				anchor: anchor
 			});
 			
 			currentComment = [];
 		}
 	});
 
-	var out="";
+	var out="# "+filename+"\n\n";
+
+	var toc = [];
+	documentation.forEach(function(entry) {
+		var parameters = entry.parameters.split(/,\s*/);
+		entry.parametersFormatted = formatParameters(parameters);
+		entry.parsedComments = parseComments(entry.comment);
+		if (entry.parsedComments.flags.pvt || entry.name.substr(0,1)=='_') {
+			entry.pvt = true;
+		}
+	});
 
 	documentation.forEach(function(entry) {
-		var parsedComments = parseComments(entry.comment);
-		if (parsedComments.flags.pvt || entry.name.substr(0,1)=='_') {
+		var title = stripHtml(entry.name+"("+entry.parameters+")");
+		var tocEntry = template(tocEntryTemplate, {
+			title: title,
+			anchor: entry.anchor,
+		});
+
+		if (!entry.pvt) { 
+			toc.push(tocEntry);
+		}
+	});
+	toc = toc.join("\n")+"\n\n";
+
+	out+=toc;
+
+	documentation.forEach(function(entry) {
+		if (entry.pvt) {
 			return;
 		}
-
-		var parameters = entry.parameters.split(/,\s*/);
-		parameters = formatParameters(parameters);
 
 		if (entry.type == Types.CLASS) {
 			out+=template(classTemplate, {
 				name: entry.name,
-				parameters: parameters
+				anchor: entry.anchor,
+				parameters: entry.parametersFormatted
 			});
 
 		} else if (entry.type==Types.METHOD) {
 			out+=template(methodTemplate, {
 				name: entry.name,
-				parameters: parameters
+				anchor: entry.anchor,
+				parameters: entry.parametersFormatted
 			});
 
 		} else if (entry.type == Types.STATIC_METHOD) {
 			out+=template(staticMethodTemplate, {
 				class: lastClassName,
 				name: entry.name,
-				parameters: parameters
+				anchor: entry.anchor,
+				parameters: entry.parametersFormatted
 			});
 		}
 
 		out+="\n\n";
 
-		if (parsedComments.text) { 
-			out+=parsedComments.text;
+		if (entry.parsedComments.text) { 
+			out+=entry.parsedComments.text;
 			out+="\n\n";
 		}
 	});
