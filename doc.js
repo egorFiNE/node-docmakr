@@ -27,8 +27,8 @@ var paramUnknownTemplate = '* <code>**{name}**</code> &#8212; {doc}';
 var returnTemplate = 'Returns:\n\n* <code><span class="type">{type}</span></code> {doc}';
 var returnUnknownTemplate = 'Returns:\n\n* {doc}';
 var methodTemplate = '### <a name="{anchor}"></a> {name}({parameters})';
-var staticMethodTemplate = '### {class}.{name}({parameters})  <span class="static">static</span>';
-var classTemplate = '## <span class="class">{name}({parameters})</span>';
+var staticMethodTemplate = '### <a name="{anchor}"></a> {class}.{name}({parameters})  <span class="static">static</span>';
+var classTemplate = '## <a name="{anchor}"></a> <span class="class">{name}({parameters})</span>';
 
 var htmlTemplate = fs.readFileSync(__dirname+'/template.html').toString();
 
